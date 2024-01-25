@@ -21,7 +21,7 @@
 
 // GLOBALS /////////////////////////////////////////////////////////////////////////////////
 float loudness = 0.0f;
-int sleepMS = 50;
+int sleepMS = 16;
 float loudnessThreshold = 0.8;
 int loudCounter = 0;
 bool debugPrint = false;
@@ -117,7 +117,7 @@ void loop() {
   if(loudness > loudnessThreshold && alertFilter < 0.1){    
     loudCounter ++;
     Serial.printf("loud! (loudCounter %d)\n", loudCounter);
-    if(loudCounter > 3){
+    if(loudCounter > 2){
       Serial.printf("notify!!!\n");
       alertFilter = 1;
       loudCounter = 0;
@@ -141,7 +141,7 @@ void loop() {
     ArduinoOTA.handle();
   #endif
 
-  alertFilter *= 0.97;
+  alertFilter *= 0.985;
   if(alertFilter > 0.1){
     Serial.printf("alertFilter: %f\n", alertFilter);
   }
@@ -152,7 +152,7 @@ void updateSensorData() {
 #if (MIC_ENABLED)  //calc mic input gain //////////////////////
   int mn = 1024;
   int mx = 0;
-  for (int i = 0; i < 1024; ++i) {
+  for (int i = 0; i < 512; ++i) {
     int val = analogRead(A0);
     mn = min(mn, val);
     mx = max(mx, val);
