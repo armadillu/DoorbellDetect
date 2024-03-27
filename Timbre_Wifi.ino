@@ -1,11 +1,9 @@
 // BEGIN CONFIG ///////////////////////////////////////////////////////////////////////////
 #define HOST_NAME "Timbre"
-#define SERVER_WWW true
 // END CONFIG //////////////////////////////////////////////////////////////////////////////
 
-#include <ESP8266WiFi.h>
 #include "WifiPass.h"	//define wifi SSID & pass
-#include <ESP8266WebServer.h>
+#include <SerialWebLog.h>
 #include <ESP8266HTTPClient.h>
 #include <ArduinoOTA.h>
 
@@ -19,68 +17,42 @@ int loudCounterMaxSoFar = 0;
 float loudestSoFar = 0;
 float alertFilter = 0;
 
-#if SERVER_WWW
-ESP8266WebServer server(80);
-#endif
+SerialWebLog mylog;
 
 void updateSensorData();
 
 // WIFI ////////////////////////////////////////////////////////////////////////////////////
 
-#if SERVER_WWW
-void handleRoot() {
+void handleState() {
 	static char json[200];
 	sprintf(json, "{\"ID\":\"%s\", \"loud\":%f, \"alertness\":%f, \"loudConterTrigger\":%d, \"loudCounterMaxSoFar\":%d, \"loudnessThreshold\":%f, \"loudestSoFar:\":%f }", HOST_NAME, loudness, alertFilter, loudConterTrigger, loudCounterMaxSoFar, loudnessThreshold, loudestSoFar);
-	server.send(200, "application/json", json);
+	mylog.getServer()->send(200, "application/json", json);
 }
-
 
 void handleTrigger() {
 	alertFilter = 1;
-	server.send(200, "text/plain", "OK");
+	mylog.getServer()->send(200, "text/plain", "OK");
 }
-
-void handleReset() {
-	ESP.restart();
-}
-
-#endif
 
 
 void setup() {
+
 	pinMode(A0, INPUT);
 
-	Serial.begin(9600);
-	Serial.println("----------------------------------------------\n");
+	mylog.setup(HOST_NAME, ssid, password);
 
-	WiFi.setPhyMode(WIFI_PHY_MODE_11G);
-	WiFi.setSleepMode(WIFI_NONE_SLEEP);
-	//WiFi.mode(WIFI_OFF);		//otherwise the module will not reconnect
-	WiFi.mode(WIFI_STA);	//if it gets disconnected
-	WiFi.disconnect();
-	WiFi.setHostname(HOST_NAME);
-	WiFi.begin(ssid, password);
+	//add an extra endpoint
+	mylog.getServer()->on("/trigger", handleTrigger);
+	mylog.addHtmlExtraMenuOption("Trigger", "/trigger");	
 
-	Serial.printf("Trying to connect to %s ...\n", ssid);
-	if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-		delay(5000);
-		ESP.restart();
-	}
-	Serial.printf("\nConnected to %s IP address %s\n", ssid, WiFi.localIP().toString().c_str());
-	
-#if SERVER_WWW
-	server.on("/", handleRoot);
-	server.on("/trigger", handleTrigger);
-	server.on("/reset", handleReset);
-	server.begin();
-	Serial.println("HTTP server started");
-#endif
+	mylog.getServer()->on("/state", handleState);
+	mylog.addHtmlExtraMenuOption("State", "/state");	
 
 	ArduinoOTA.setHostname(HOST_NAME);
 	ArduinoOTA.setRebootOnSuccess(true);
 	ArduinoOTA.begin();	
 
-	Serial.println("ready!");
+	mylog.print("ready!\n");
 }
 
 
@@ -88,13 +60,14 @@ void loop() {
 
 	ArduinoOTA.handle();
 	updateSensorData();
+	mylog.update();
 
 	if(loudness > loudnessThreshold && alertFilter < 0.1){		
 		loudCounter ++;
 		loudCounterMaxSoFar = max(loudCounterMaxSoFar, loudCounter);
-		Serial.printf("loud! (loudCounter %d)\n", loudCounter);
+		mylog.printf("loud! (loudCounter %d)\n", loudCounter);
 		if(loudCounter >= loudConterTrigger){
-			Serial.printf("notify!!!\n");
+			mylog.print("notify!!!\n");
 			alertFilter = 1;
 			loudCounter = 0;
 			
@@ -102,23 +75,16 @@ void loop() {
 			HTTPClient http;
 
 			if (http.begin(client, "http://10.0.0.10:12345/doorbell")) {	// HTTP
-				int httpResponseCode = http.GET();
-				Serial.print("[HTTP] response code: ");
-				Serial.println(httpResponseCode, 1);
+				mylog.printf("[HTTP] response code: %d\n", http.GET());
 				http.end();
 			} else {
-				Serial.println("[HTTP] Unable to connect");
+				mylog.print("[HTTP] Unable to connect\n");
 			}
 		}
 	}else{
 		loudCounter = 0;
 	}
-
-	#if SERVER_WWW
-	server.handleClient();
-	#endif
-
-	alertFilter *= 0.98;
+	alertFilter *= 0.97;
 
 	delay(sleepMS);	//once per second
 }
@@ -135,5 +101,5 @@ void updateSensorData() {
 	}
 	loudness = (mx - mn) / 1024.0f;
 	loudestSoFar = max(loudestSoFar, loudness);
-	//Serial.printf("loud:%f\n", loudness);
+	//mylog.printf("loud:%f\n", loudness);
 }
