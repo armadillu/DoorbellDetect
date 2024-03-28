@@ -25,18 +25,23 @@ void updateSensorData();
 
 void handleState() {
 	static char json[200];
-	sprintf(json, "{\"ID\":\"%s\", \"loud\":%f, \"alertness\":%f, \"loudConterTrigger\":%d, \"loudCounterMaxSoFar\":%d, \"loudnessThreshold\":%f, \"loudestSoFar:\":%f }", HOST_NAME, loudness, alertFilter, loudConterTrigger, loudCounterMaxSoFar, loudnessThreshold, loudestSoFar);
-	mylog.getServer()->send(200, "application/json", json);
+	sprintf(json, "ID:%s\nloud:%f\nalertness:%f\nloudConterTrigger:%d\nloudCounterMaxSoFar:%d\nloudnessThreshold:%f\nloudestSoFar:%f", 
+			HOST_NAME, loudness, alertFilter, loudConterTrigger, loudCounterMaxSoFar, loudnessThreshold, loudestSoFar);
+	mylog.getServer()->send(200, "text/plain", json);
 }
 
 void handleTrigger() {
-	alertFilter = 1;
-	mylog.getServer()->send(200, "text/plain", "OK");
+	alertFilter = 0.0;
+	loudness = loudnessThreshold;
+	loudCounter = loudConterTrigger;
+	mylog.print("manual trigger!\n");
+	mylog.getServer()->send(200, "text/plain", "Triggered OK!");
 }
 
 
 void setup() {
 
+WiFi.RSSI();
 	pinMode(A0, INPUT);
 
 	mylog.setup(HOST_NAME, ssid, password);
@@ -62,12 +67,12 @@ void loop() {
 	updateSensorData();
 	mylog.update();
 
-	if(loudness > loudnessThreshold && alertFilter < 0.1){		
+	if(loudness >= loudnessThreshold && alertFilter < 0.1){		
 		loudCounter ++;
 		loudCounterMaxSoFar = max(loudCounterMaxSoFar, loudCounter);
 		mylog.printf("loud! (loudCounter %d)\n", loudCounter);
 		if(loudCounter >= loudConterTrigger){
-			mylog.print("notify!!!\n");
+			mylog.print("Notify server!!!\n");
 			alertFilter = 1;
 			loudCounter = 0;
 			
@@ -84,9 +89,21 @@ void loop() {
 	}else{
 		loudCounter = 0;
 	}
-	alertFilter *= 0.97;
+
+	//handle too many consecutive beeps filter
+	alertFilter *= 0.99;
+	if(alertFilter < 0.1 && alertFilter > 0.01){
+		alertFilter = 0;
+		mylog.print("Ready for more beeps\n");
+	}
 
 	delay(sleepMS);	//once per second
+
+	//if connected to the wrong AP, reconnect to a better one!
+	if(WiFi.RSSI() < -70){
+		mylog.print("Wifi signal poor, reconnecting!\n");
+		WiFi.reconnect();
+	}
 }
 
 
