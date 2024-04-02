@@ -10,7 +10,7 @@
 // GLOBALS /////////////////////////////////////////////////////////////////////////////////
 float loudness = 0.0f;
 int sleepMS = 5;
-float loudnessThreshold = 0.40;
+float loudnessThreshold = 0.50;
 int loudConterTrigger = 1;
 int loudCounter = 0;
 int loudCounterMaxSoFar = 0;
@@ -41,10 +41,12 @@ void handleTrigger() {
 
 void setup() {
 
-WiFi.RSSI();
 	pinMode(A0, INPUT);
 
-	mylog.setup(HOST_NAME, ssid, password);
+	uint8_t bssid[6] = {0x60,0x8d,0x26,0xeb,0xe2,0x8b}; //60:8d:26:eb:e2:8b Orangebox6
+	//uint8_t bssid[6] = {0x04,0x20,0x84,0x34,0xe9,0x8b}; //04:20:84:34:e9:8b zte extender
+	
+	mylog.setup(HOST_NAME, ssid, password, bssid);
 
 	//add an extra endpoint
 	mylog.getServer()->on("/trigger", handleTrigger);
@@ -80,10 +82,10 @@ void loop() {
 			HTTPClient http;
 
 			if (http.begin(client, "http://10.0.0.10:12345/doorbell")) {	// HTTP
-				mylog.printf("[HTTP] response code: %d\n", http.GET());
+				mylog.printf("[HTTP] Response Code: %d\n", http.GET());
 				http.end();
 			} else {
-				mylog.print("[HTTP] Unable to connect\n");
+				mylog.print("[HTTP] Unable to connect!\n");
 			}
 		}
 	}else{
@@ -91,19 +93,13 @@ void loop() {
 	}
 
 	//handle too many consecutive beeps filter
-	alertFilter *= 0.99;
+	alertFilter *= 0.995;
 	if(alertFilter < 0.1 && alertFilter > 0.01){
 		alertFilter = 0;
-		mylog.print("Ready for more beeps\n");
+		mylog.print("Ready for more Beeps!\n");
 	}
 
 	delay(sleepMS);	//once per second
-
-	//if connected to the wrong AP, reconnect to a better one!
-	if(WiFi.RSSI() < -70){
-		mylog.print("Wifi signal poor, reconnecting!\n");
-		WiFi.reconnect();
-	}
 }
 
 
